@@ -20,13 +20,13 @@ from imgUtil import rotateCrop
 # Z degree per step = 360 / 2048 = 0.175
 today = datetime.datetime.now()
 todayStr = today.strftime('%Y_%m_%d')
-imgFolderPath = 'C:\\Users\\fcbar\\Pictures\\%s\\' % todayStr
+imgFolderPath = '../Pictures/%s/' % todayStr
 
 # px -> length -> step
 # 50x
-pxPerStep={'X+':6.138, 'X-':5.935, 'Y+':5.974, 'Y-':6.175}  #stage motion
+pxPerStep={'X+':6.154, 'X-':6.094, 'Y+':5.844, 'Y-':6.205}  #stage motion
 # 20x
-#pxPerStep={'X+':2.477, 'X-':2.395, 'Y+':2.411, 'Y-':2.491}
+pxPerStep={'X+':2.483, 'X-':2.459, 'Y+':2.358, 'Y-':2.503}
 
 # for sample stage movement, adjustable
 XstridePx = 2000
@@ -46,7 +46,7 @@ print("Connected COM ports: " + str(connected))
 stepper = stepperControl.StepperMotor('COM3')
 agController = agilisControl.Controller('COM5')
 camWindow = EOSwindowControl.WindowMgr()
-camWindow.find_window_wildcard("遥控实时显示窗口")
+camWindow.find_window_wildcard("Remote Live View window")
 
 rotationStage = agController.addDevice(channel=3, axis=2)
 sampleStageX = agController.addDevice(channel=4, axis=1)
@@ -97,7 +97,7 @@ def moveLens(From, To):
     stepper.Step(dZ)
     return -dX,-dY,dZ
         
-def joyControl(disabled = None, mode='keyboard'): 
+def joyControl(disabled = None, mode='joystick'): 
     thres = 0.1
     Xdis, Ydis, Zdis = 0,0,0
     strideMode = 'large'    
@@ -117,12 +117,12 @@ def joyControl(disabled = None, mode='keyboard'):
             pass
             #time.sleep(0.1)
         actual = np.array([sampleStageX.queryCounter(), sampleStageY.queryCounter(),stepper.GetPosition()]) - before
-        print(expected)
-        print(actual)
+
         if np.array_equal(expected, actual):
             Xdis += DX
             Ydis += DY
             Zdis += DZ
+            print(actual)
         else:
             raise Exception("Number of steps doesn't match")
 
@@ -144,6 +144,7 @@ def joyControl(disabled = None, mode='keyboard'):
             
             if button['START']:
                 pygame.quit()
+                time.sleep(0.2)
                 break
             # changes stride
             if button['A']:  
@@ -174,7 +175,7 @@ def joyControl(disabled = None, mode='keyboard'):
                 tryMoveLens(0,0,dZ)
             if LR2 < -0.99:
                 tryMoveLens(0,0,-dZ)
-
+                '''
             #manipulator
             if button['L1']:  #up
                 manipulatorZ.move()
@@ -187,7 +188,8 @@ def joyControl(disabled = None, mode='keyboard'):
             if LX > thres: 
                 manipulatorX.move()  
             if LX < -thres:                   
-                manipulatorX.move()  
+                manipulatorX.move() 
+                '''
     if mode=='keyboard':
         while True:         
             if keyboard.is_pressed('alt+enter'):
@@ -239,11 +241,11 @@ def captureImage(camWindow):
     oldFileList = os.listdir(imgFolderPath)
     #cam.top_window().SetFocus()    
     camWindow.set_foreground()
-    time.sleep(0.1)
+    time.sleep(0.05)
     keyboard.press_and_release('space')
     # make sure there is enough time for the photo to be taken
     while len(os.listdir(imgFolderPath))==len(oldFileList):
-        time.sleep(0.1)
+        time.sleep(0.05)
     #print('Photo taken')
     
 # move sample is opposite to move lens
@@ -273,10 +275,11 @@ def scan(TR, BR):
     scanList = []
     for j in range(1, numRows+1):
         for i in range(1, numCols+1):
+            '''
             if (j % 2 == 0): 
                 scanList.append((j, numCols - i + 1))
-            else:
-                scanList.append((j, i))
+            else:'''
+            scanList.append((j, i)) # always scan from left to right, to reduce backlash
                           
     for ind, loc in enumerate(scanList):
         captureImage(camWindow)
@@ -287,7 +290,7 @@ def scan(TR, BR):
         try:
             new = calcLoc(scanList[ind+1])
             moveLens(current, new)
-            while not (sampleStageX.amIstill(100) and sampleStageY.amIstill(100)):
+            while not (sampleStageX.amIstill(50) and sampleStageY.amIstill(50)):
                 pass
         except IndexError:
             pass
@@ -324,6 +327,8 @@ print('Starting to scan...')
 scanResult = scan(TR, BR)
  
 print('Scan finished')
+
+# In[]
 print('Starting to process images')
 now = datetime.datetime.now()
 fmt = '%Y%m%d%H%M'
