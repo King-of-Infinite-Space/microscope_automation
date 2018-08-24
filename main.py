@@ -99,6 +99,8 @@ def compensateJog(exp, dir):
 
 # time
 def moveLens(From, To, mode='jog'):  # move or jog(positive int) 
+    dZ = To[2]-From[2]
+    stepper.Step(dZ) 
     # transform px movement to steps
     # lens movement is opposite to stage
     dX = To[0]-From[0]
@@ -122,8 +124,7 @@ def moveLens(From, To, mode='jog'):  # move or jog(positive int)
         sampleStageY.timedJog(speed=1700,steps=compensateJog(-dY,'Y'))
     else:
         raise Exception('Moving mode is not defined')
-    dZ = To[2]-From[2]
-    stepper.Step(dZ)
+
     return -dX,-dY,dZ
         
 def joyControl(disabled = None, controller='joystick', moveMode='move'): 
@@ -411,7 +412,7 @@ def scan(TR, BR):
         except IndexError:
             pass
     return log
-
+'''
 def scanArea(size):
     # mm
     if type(size)==int:
@@ -452,7 +453,7 @@ def scanArea(size):
     print('Starting to scan...')
     scan(TR, BR)  
     print('Scan finished')
-    
+'''    
 ################################################################
 # In[]
     
@@ -507,15 +508,18 @@ for i in range(5):
             print('!!  Number of photos doesnt match. Please check.')
     else:
         break
-    
+
+# rename (or crop) the files
 count = 0
 for file in newFileList:
     if file not in oldFileList:
         location = scanResult['trace'][count][0]
         filename = '%s_%dx%d_%d_%d.jpg' % (nowStr, scanResult['size'][0], scanResult['size'][1], location[0], location[1])
-        croppedImg = rotateCrop(imgFolderPath+file, pxSize+offset, output= imgFolderPath+filename)
+        # croppedImg = rotateCrop(imgFolderPath+file, pxSize+offset, output= imgFolderPath+filename)
+        os.rename(imgFolderPath+file,imgFolderPath+filename)
         count += 1
-print('Image preprocessing finished')
+        
+#print('Image preprocessing finished')
 #if input('Do you want to delete the original photos?') == 'y':
 
 print('Done')
