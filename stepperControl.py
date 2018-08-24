@@ -48,7 +48,7 @@ class StepperMotor:
     def GetPosition(self):
         self.StepperMotor.reset_input_buffer()
         self.StepperMotor.write(encodeMessage(987))
-        time.sleep(0.05)
+        time.sleep(0.1)
         StepperPosition=self.StepperMotor.readline().decode()[:-2]
         return int(StepperPosition)
         

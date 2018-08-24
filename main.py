@@ -32,16 +32,16 @@ pxPerStep={'X+':0.920, 'X-':0.911, 'Y+':0.873, 'Y-':0.927}
 lenPerPx = 0.56926
 
 # for sample stage movement, adjustable
-XstridePx = 3000
-YstridePx = 3000
+XstridePx = 1000
+YstridePx = 1000
 Zstride = 30
 rotateAngle = 1000  #roughly 500 steps = 1 deg
 
-jogSpeed = 666 # 5, 100, 666, 1700
+jogSpeed = 1700 # 5, 100, 666, 1700
 JOGMODE = {'666': 4, '1700': 3, '100': 2, '5':1}
 
 pxSize = 1000
-offset = 50 #we'll crop the central square of the image (size: pxSize + offset)
+offset = 60 #we'll crop the central square of the image (size: pxSize + offset)
 
 #stepsPerSide = {key: int(pxSize // value) for key, value in pxPerStep.items()}
 
@@ -51,6 +51,7 @@ print("Connected COM ports: " + str(connected))
 
 stepper = stepperControl.StepperMotor('COM3')
 agController = agilisControl.Controller('COM5')
+
 camWindow = EOSwindowControl.WindowMgr()
 camWindow.find_window_wildcard("Remote Live View window")
 
@@ -77,11 +78,24 @@ def calibrateXY():
     print(stepsPerRange)
     return stepsPerRange
 
-def test():
-    for i in range(-20,21):
-        sampleStageX.resetCounter()
-        sampleStageX.timedJog(steps=i*100)
-        cal.append(sampleStageX.queryCounter())
+def test(ss):
+    sampleStageX.resetCounter()
+    sampleStageX.timedJog(steps=compensateJog(ss, 'X'))
+    print(sampleStageX.queryCounter())
+    
+
+def compensateJog(exp, dir):
+    # stage movement
+    nom = 0
+    if dir=='X' and exp > 0:
+        nom = 0.9859*exp - 119.27
+    if dir=='X' and exp < 0:
+        nom = 0.9891*exp + 121.54
+    if dir=='Y' and exp > 0:
+        nom = 0.986*exp - 119.35
+    if dir=='Y' and exp < 0:
+        nom = 0.9861*exp + 119.18
+    return nom
 
 # time
 def moveLens(From, To, mode='jog'):  # move or jog(positive int) 
@@ -103,17 +117,16 @@ def moveLens(From, To, mode='jog'):  # move or jog(positive int)
         sampleStageX.move(-1 * dX)
         sampleStageY.move(-1* dY)
     elif mode == 'jog':  #jog mode, # 4 - 666steps/s; 3 - 1700; 2 - 100 steps/s
-        global jogSpeed
-        sampleStageX.timedJog(speed=jogSpeed,steps=-dX)
-        sampleStageY.timedJog(speed=jogSpeed,steps=-dY)
-        
+        # global jogSpeed
+        sampleStageX.timedJog(speed=1700,steps=compensateJog(-dX,'X'))
+        sampleStageY.timedJog(speed=1700,steps=compensateJog(-dY,'Y'))
     else:
         raise Exception('Moving mode is not defined')
     dZ = To[2]-From[2]
     stepper.Step(dZ)
     return -dX,-dY,dZ
         
-def joyControl(disabled = None, controller='joystick', moveMode='jog'): 
+def joyControl(disabled = None, controller='joystick', moveMode='move'): 
     global jogSpeed
     Xdis, Ydis, Zdis = 0,0,0
     strideMode = '' 
@@ -133,7 +146,7 @@ def joyControl(disabled = None, controller='joystick', moveMode='jog'):
         #might use jog
         nonlocal Xdis, Ydis, Zdis
         before = np.array([sampleStageX.queryCounter(), sampleStageY.queryCounter(),stepper.GetPosition()])
-        expected = np.array(moveLens([0,0,0],[DX,DY,DZ]))
+        expected = np.array(moveLens([0,0,0],[DX,DY,DZ], mode='move'))
         rate = 30
         if DZ == 0:
             while not (sampleStageX.amIstill(rate) and sampleStageY.amIstill(rate)):
@@ -219,7 +232,7 @@ def joyControl(disabled = None, controller='joystick', moveMode='jog'):
                     tryMoveLens(0,0,dZ)
                 if axes['LR2'] < -0.99:
                     tryMoveLens(0,0,-dZ)
-
+        '''
         if moveMode=='jog':
             while True:
                 for event in pygame.event.get():
@@ -277,10 +290,10 @@ def joyControl(disabled = None, controller='joystick', moveMode='jog'):
                 if axes['LR2'] < -0.99:
                     tryMoveLens(0,0,-dZ)
             
-            prevButtons= buttons
-
-            
+                prevButtons= buttons
             '''
+            
+        '''
             #manipulator
             if buttons['L1']:  #up
                 manipulatorZ.move()
@@ -332,11 +345,6 @@ def joyControl(disabled = None, controller='joystick', moveMode='jog'):
     output = np.array([Xdis, Ydis, Zdis])
     print(output)
     return output
-
-def calcNumPhotos(mm):
-    pxs = 2351*mm/0.2
-    num = pxs / 1800
-    return num
 
 def captureImage(camWindow):
     '''
@@ -442,7 +450,7 @@ def scanArea(size):
     time.sleep(0.2)
     # Scan from TL to BR
     print('Starting to scan...')
-    scanResult = scan(TR, BR)  
+    scan(TR, BR)  
     print('Scan finished')
     
 ################################################################
@@ -509,7 +517,5 @@ for file in newFileList:
         count += 1
 print('Image preprocessing finished')
 #if input('Do you want to delete the original photos?') == 'y':
-
-
 
 print('Done')
