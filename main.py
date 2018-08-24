@@ -27,9 +27,9 @@ imgFolderPath = '../Pictures/%s/' % todayStr
 #  pxPerStep={'X+':6.154, 'X-':6.094, 'Y+':5.844, 'Y-':6.205}  #stage motion
 # lenPerPx = 0.085070183
 
-# 20x
-pxPerStep={'X+':2.483, 'X-':2.459, 'Y+':2.358, 'Y-':2.503}
-lenPerPx = 0.210837023
+# 20x & 1920
+pxPerStep={'X+':0.920, 'X-':0.911, 'Y+':0.873, 'Y-':0.927}
+lenPerPx = 0.56926
 
 # for sample stage movement, adjustable
 XstridePx = 3000
@@ -40,8 +40,8 @@ rotateAngle = 1000  #roughly 500 steps = 1 deg
 jogSpeed = 666 # 5, 100, 666, 1700
 JOGMODE = {'666': 4, '1700': 3, '100': 2, '5':1}
 
-pxSize = 2700 
-offset = 100 #we'll crop the central square of the image (size: pxSize + offset)
+pxSize = 1000
+offset = 50 #we'll crop the central square of the image (size: pxSize + offset)
 
 #stepsPerSide = {key: int(pxSize // value) for key, value in pxPerStep.items()}
 
@@ -78,12 +78,13 @@ def calibrateXY():
     return stepsPerRange
 
 def test():
-    moveLens([0,0,0],[5000,0,0])
-    moveLens([5000,0,0],[0,0,0])
-    captureImage(camWindow)
+    for i in range(-20,21):
+        sampleStageX.resetCounter()
+        sampleStageX.timedJog(steps=i*100)
+        cal.append(sampleStageX.queryCounter())
 
 # time
-def moveLens(From, To, mode='move'):  # move or jog(positive int) 
+def moveLens(From, To, mode='jog'):  # move or jog(positive int) 
     # transform px movement to steps
     # lens movement is opposite to stage
     dX = To[0]-From[0]

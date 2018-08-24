@@ -1,8 +1,13 @@
 import sys
-from time import sleep
+import time
 sys.path.append('./pyagilis/')
 from controller import AGUC8
 from channel import Axis
+
+def busy_wait(dt):   
+    current_time = time.time()
+    while (time.time() < current_time+dt):
+        pass
 
 class Controller(AGUC8):
     def __init__(self, portName):
@@ -38,20 +43,33 @@ class AgilisDevice(Axis):
         if self.controller.currentChannel != self.channel:
             self.toMyChannel()
         super().move(steps)
-    def timedJog(self, speed=666, steps=0):
+    def timedJog(self, speed=1700, steps=0):
         if self.controller.currentChannel != self.channel:
             self.toMyChannel()
         JOGMODE = {'666': 4, '1700': 3, '100': 2, '5':1}
         mode = JOGMODE[str(speed)] 
         if speed not in [5,100,666,1700]:
             raise Exception('Speed is not defined correctly')
-        time = abs(steps / speed)
+        dt = abs(steps / speed)
         if steps < 0:
             super().jog(-1* mode)
         elif steps > 0:
             super().jog(mode)
-        sleep(time)
+        time.sleep(dt)
         super().stop()
-                
+    def busyJog(self, speed=1700, steps=0):
+        if self.controller.currentChannel != self.channel:
+            self.toMyChannel()
+        JOGMODE = {'666': 4, '1700': 3, '100': 2, '5':1}
+        mode = JOGMODE[str(speed)] 
+        if speed not in [5,100,666,1700]:
+            raise Exception('Speed is not defined correctly')
+        dt = abs(steps / speed)
+        if steps < 0:
+            super().jog(-1* mode)
+        elif steps > 0:
+            super().jog(mode)
+        busy_wait(dt)
+        super().stop()                
 
     
