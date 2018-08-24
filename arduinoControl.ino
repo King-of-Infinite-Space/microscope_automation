@@ -93,12 +93,12 @@ void showNewNumberAndMove() {
         */
         // move certain steps
         if (dataNumber != 987) {
-            steps = Stride * dataNumber
+            int steps = Stride * dataNumber;
             stepper.step(steps);
             count += steps;
         }
         else {
-            Serial.println(count)
+            Serial.println(count);
         }
         newData = false;
     }

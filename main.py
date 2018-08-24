@@ -24,17 +24,20 @@ imgFolderPath = '../Pictures/%s/' % todayStr
 
 # px -> length -> step
 # 50x
-pxPerStep={'X+':6.154, 'X-':6.094, 'Y+':5.844, 'Y-':6.205}  #stage motion
+#  pxPerStep={'X+':6.154, 'X-':6.094, 'Y+':5.844, 'Y-':6.205}  #stage motion
+# lenPerPx = 0.085070183
+
 # 20x
 pxPerStep={'X+':2.483, 'X-':2.459, 'Y+':2.358, 'Y-':2.503}
+lenPerPx = 0.210837023
 
 # for sample stage movement, adjustable
-XstridePx = 2000
-YstridePx = 2000
-Zstride = 50
+XstridePx = 3000
+YstridePx = 3000
+Zstride = 30
 rotateAngle = 1000  #roughly 500 steps = 1 deg
 
-pxSize = 1800 
+pxSize = 2700 
 offset = 100 #we'll crop the central square of the image (size: pxSize + offset)
 
 #stepsPerSide = {key: int(pxSize // value) for key, value in pxPerStep.items()}
@@ -76,6 +79,7 @@ def test():
     moveLens([5000,0,0],[0,0,0])
     captureImage(camWindow)
 
+# time
 def moveLens(From, To):
     # transform px movement to steps
     # lens movement is opposite to stage
@@ -100,7 +104,7 @@ def moveLens(From, To):
 def joyControl(disabled = None, mode='joystick'): 
     thres = 0.1
     Xdis, Ydis, Zdis = 0,0,0
-    strideMode = 'large'    
+    strideMode = ''    
     #moveMode = 4 
     # 4 - 666steps/s; 2 - 100 steps/s
     dX, dY, dZ = XstridePx, YstridePx, Zstride
@@ -119,10 +123,13 @@ def joyControl(disabled = None, mode='joystick'):
         actual = np.array([sampleStageX.queryCounter(), sampleStageY.queryCounter(),stepper.GetPosition()]) - before
 
         if np.array_equal(expected, actual):
-            Xdis += DX
-            Ydis += DY
-            Zdis += DZ
-            print(actual)
+            if sampleStageX.amIatMyLimit() or sampleStageY.amIatMyLimit():
+                print("!!-- Stage is at the limit")
+            else:    
+                Xdis += DX
+                Ydis += DY
+                Zdis += DZ
+                print(actual)
         else:
             raise Exception("Number of steps doesn't match")
 
@@ -148,15 +155,21 @@ def joyControl(disabled = None, mode='joystick'):
                 break
             # changes stride
             if button['A']:  
-                if strideMode != 'large':
-                    strideMode = 'large'
+                if strideMode != 'medium':
+                    strideMode = 'medium'
                     dX, dY, dZ = XstridePx, YstridePx, Zstride
                     print('    ' + strideMode +' stride mode ' + str([dX, dY, dZ]))
             if button['B']:  
                 if strideMode != 'small':
                     strideMode = 'small'
-                    dX, dY, dZ = XstridePx // 10, YstridePx // 10, Zstride //10
+                    dX, dY, dZ = XstridePx // 5, YstridePx // 5, Zstride // 5
                     print('    '+strideMode +' stride mode ' + str([dX, dY, dZ]))
+            if button['X']:  
+                if strideMode != 'large':
+                    strideMode = 'large'
+                    dX, dY, dZ = XstridePx * 5, YstridePx * 5, Zstride * 5
+                    print('    '+strideMode +' stride mode ' + str([dX, dY, dZ]))
+                    
             # sample X, Y, rotation
             if disabled != 'X':
                 if RX > thres: 
@@ -275,11 +288,10 @@ def scan(TR, BR):
     scanList = []
     for j in range(1, numRows+1):
         for i in range(1, numCols+1):
-            '''
             if (j % 2 == 0): 
                 scanList.append((j, numCols - i + 1))
-            else:'''
-            scanList.append((j, i)) # always scan from left to right, to reduce backlash
+            else:
+                scanList.append((j, i)) 
                           
     for ind, loc in enumerate(scanList):
         captureImage(camWindow)
@@ -294,19 +306,59 @@ def scan(TR, BR):
                 pass
         except IndexError:
             pass
-
     return log
 
+def scanArea(size):
+    # mm
+    if type(size)==int:
+        width = size
+        height = size
+    else:
+        width = size[0]
+        height = size[1] 
+    pxW = round(width*1000 / lenPerPx)
+    pxH = round(height*1000 / lenPerPx)
+    print('Please move to the bottom right corner and focus')   
+    joyControl()
+    print('Moving to the Top Right corner...') 
+    toMove = [0,pxH,0]
+    moveLens([0,0,0],toMove)
+    print('Please adjust position and focus')
+    BR2TR = joyControl() + np.array(toMove)
+    
+    print('Moving to the Top Left corner...') 
+    toMove2 = [-pxW,0,0]
+    moveLens([0,0,0],toMove2)
+    print('Please adjust position and focus')
+    TR2TL = joyControl() + np.array(toMove2)  
+    
+    BR = -1 * (BR2TR + TR2TL)
+    TR = -1 * TR2TL
+    
+    global oldFileList
+    try:
+        oldFileList = os.listdir(imgFolderPath)
+    except FileNotFoundError:
+        os.mkdir(imgFolderPath)
+        oldFileList = []
+    
+    camWindow.set_foreground()  
+    time.sleep(0.2)
+    # Scan from TL to BR
+    print('Starting to scan...')
+    scanResult = scan(TR, BR)  
+    print('Scan finished')
+    
 ################################################################
 # In[]
     
 print('Please move to the bottom right corner and focus')   
 joyControl()
 
-print('Please to the Top Right corner and focus')
+print('Please go to the Top Right corner and focus')
 BR2TR = joyControl()
 
-print('Please to the Top Left corner and focus')
+print('Please go to the Top Left corner and focus')
 TR2TL = joyControl()
 
 # Convention: right as X+, down as Y+, assuming we are moving the lens' 
@@ -327,6 +379,9 @@ print('Starting to scan...')
 scanResult = scan(TR, BR)
  
 print('Scan finished')
+
+stepper.CloseSerial()
+agController.disconnect()
 
 # In[]
 print('Starting to process images')
@@ -359,7 +414,6 @@ for file in newFileList:
 print('Image preprocessing finished')
 #if input('Do you want to delete the original photos?') == 'y':
 
-stepper.CloseSerial()
-agController.disconnect()
+
 
 print('Done')
