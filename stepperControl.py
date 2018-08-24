@@ -42,13 +42,13 @@ class StepperMotor:
         if steps > 100:
             timeToWait = steps / 1000
         else:
-            timeToWait = 0.1
+            timeToWait = 0.05
         time.sleep(timeToWait) # this seems important to reduce lag or prevent getting stuck
         
     def GetPosition(self):
         self.StepperMotor.reset_input_buffer()
         self.StepperMotor.write(encodeMessage(987))
-        time.sleep(0.1)
+        time.sleep(0.05)
         StepperPosition=self.StepperMotor.readline().decode()[:-2]
         return int(StepperPosition)
         

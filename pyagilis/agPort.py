@@ -72,7 +72,7 @@ class AGPort(serial.Serial):
         command += '\r\n'
         bCommand = command.encode()
         self.write(bCommand)
-        sleep(0.1)
+        sleep(0.05)
         #print('Wrote')
         if self.isAquery(command):
             #print('Trying to read')

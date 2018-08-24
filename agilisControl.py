@@ -1,4 +1,5 @@
 import sys
+from time import sleep
 sys.path.append('./pyagilis/')
 from controller import AGUC8
 from channel import Axis
@@ -37,5 +38,20 @@ class AgilisDevice(Axis):
         if self.controller.currentChannel != self.channel:
             self.toMyChannel()
         super().move(steps)
+    def timedJog(self, speed=666, steps=0):
+        if self.controller.currentChannel != self.channel:
+            self.toMyChannel()
+        JOGMODE = {'666': 4, '1700': 3, '100': 2, '5':1}
+        mode = JOGMODE[str(speed)] 
+        if speed not in [5,100,666,1700]:
+            raise Exception('Speed is not defined correctly')
+        time = abs(steps / speed)
+        if steps < 0:
+            super().jog(-1* mode)
+        elif steps > 0:
+            super().jog(mode)
+        sleep(time)
+        super().stop()
+                
 
     

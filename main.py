@@ -37,6 +37,9 @@ YstridePx = 3000
 Zstride = 30
 rotateAngle = 1000  #roughly 500 steps = 1 deg
 
+jogSpeed = 666 # 5, 100, 666, 1700
+JOGMODE = {'666': 4, '1700': 3, '100': 2, '5':1}
+
 pxSize = 2700 
 offset = 100 #we'll crop the central square of the image (size: pxSize + offset)
 
@@ -80,7 +83,7 @@ def test():
     captureImage(camWindow)
 
 # time
-def moveLens(From, To):
+def moveLens(From, To, mode='move'):  # move or jog(positive int) 
     # transform px movement to steps
     # lens movement is opposite to stage
     dX = To[0]-From[0]
@@ -95,25 +98,42 @@ def moveLens(From, To):
         dY = dY / pxPerStep['Y+']        
     dX = round(dX)
     dY = round(dY)
-    sampleStageX.move(-1 * dX)
-    sampleStageY.move(-1* dY)
+    if mode == 'move':
+        sampleStageX.move(-1 * dX)
+        sampleStageY.move(-1* dY)
+    elif mode == 'jog':  #jog mode, # 4 - 666steps/s; 3 - 1700; 2 - 100 steps/s
+        global jogSpeed
+        sampleStageX.timedJog(speed=jogSpeed,steps=-dX)
+        sampleStageY.timedJog(speed=jogSpeed,steps=-dY)
+        
+    else:
+        raise Exception('Moving mode is not defined')
     dZ = To[2]-From[2]
     stepper.Step(dZ)
     return -dX,-dY,dZ
         
-def joyControl(disabled = None, mode='joystick'): 
-    thres = 0.1
+def joyControl(disabled = None, controller='joystick', moveMode='jog'): 
+    global jogSpeed
     Xdis, Ydis, Zdis = 0,0,0
-    strideMode = ''    
+    strideMode = '' 
     #moveMode = 4 
-    # 4 - 666steps/s; 2 - 100 steps/s
+    # 4 - 666steps/s; 3 - 1700; 2 - 100 steps/s
     dX, dY, dZ = XstridePx, YstridePx, Zstride
+
+    def inThreshold(value,thres=0.1):
+        if value > thres:
+            return 1
+        if value <= thres and value >= -thres:
+            return 0
+        if value < -thres:
+            return -1
+
     def tryMoveLens(DX,DY,DZ):
         #might use jog
         nonlocal Xdis, Ydis, Zdis
         before = np.array([sampleStageX.queryCounter(), sampleStageY.queryCounter(),stepper.GetPosition()])
         expected = np.array(moveLens([0,0,0],[DX,DY,DZ]))
-        rate = 50
+        rate = 30
         if DZ == 0:
             while not (sampleStageX.amIstill(rate) and sampleStageY.amIstill(rate)):
                 pass
@@ -133,77 +153,150 @@ def joyControl(disabled = None, mode='joystick'):
         else:
             raise Exception("Number of steps doesn't match")
 
-    if mode=='joystick':
+    if controller=='joystick':
         pygame.init()
         pygame.joystick.init()   
         joystick = pygame.joystick.Joystick(0)
         joystick.init()
-        button = {}
+        buttons = {}
         buttonList = ['A','B','X','Y','L1', 'R1', 'SELECT','START']
+        axes = {}
+        axisList = ['LX','LY','LR2','RY','RX']
+        prevButtons = {}
+        prevAxes = {}
+        for b in buttonList:
+            prevButtons[b] = 0
+        for a in axisList:
+            prevAxes[a] = 0
+        if moveMode=='move':
+            while True:
+                for event in pygame.event.get():
+                    pass
+                for ind, name in enumerate(buttonList):
+                    buttons[name] = joystick.get_button(ind)
+                axes['LX'], axes['LY'], axes['LR2'], axes['RY'], axes['RX'] = [joystick.get_axis(i) for i in range(5)]
+                HATX = joystick.get_hat(0)[0]
+                if buttons['START']:
+                    pygame.quit()
+                    time.sleep(0.2)
+                    break
+                # changes stride
+                if buttons['A']:  
+                    if strideMode != 'medium':
+                        strideMode = 'medium'
+                        dX, dY, dZ = XstridePx, YstridePx, Zstride
+                        jogSpeed = 666
+                        print('    ' + strideMode +' stride mode ' + str([dX, dY, dZ]))
+                if buttons['B']:  
+                    if strideMode != 'small':
+                        strideMode = 'small'
+                        jogSpeed = 100
+                        dX, dY, dZ = XstridePx // 5, YstridePx // 5, Zstride // 5
+                        print('    '+strideMode +' stride mode ' + str([dX, dY, dZ]))
+                if buttons['X']:  
+                    if strideMode != 'large':
+                        strideMode = 'large'
+                        dX, dY, dZ = XstridePx * 5, YstridePx * 5, Zstride * 5
+                        jogSpeed = 1700
+                        print('    '+strideMode +' stride mode ' + str([dX, dY, dZ]))
+                        
+                # sample X, Y, rotation
+                if disabled != 'X':
+                    if inThreshold(axes['RX']) == 1:
+                        tryMoveLens(dX,0,0)
+                    if inThreshold(axes['RX']) == -1:
+                        tryMoveLens(-dX,0,0)
+                if disabled != 'Y':
+                    if inThreshold(axes['RY']) == -1:
+                        tryMoveLens(0,-dY,0)
+                    if inThreshold(axes['RY']) == 1:
+                        tryMoveLens(0, dY,0)
+                if HATX != 0:
+                    rotationStage.move(-HATX*rotateAngle)
+                # lens z
+                if buttons['R1']:  # right knob goes clockwise
+                    tryMoveLens(0,0,dZ)
+                if axes['LR2'] < -0.99:
+                    tryMoveLens(0,0,-dZ)
 
-        while True:
-            for event in pygame.event.get():
-                pass
-            for ind, name in enumerate(buttonList):
-                button[name] = joystick.get_button(ind)
-            LX, LY, LR2, RY, RX = [joystick.get_axis(i) for i in range(5)]
-            HATX = joystick.get_hat(0)[0]
+        if moveMode=='jog':
+            while True:
+                for event in pygame.event.get():
+                    pass
+                for ind, name in enumerate(buttonList):
+                    buttons[name] = joystick.get_button(ind)
+                axes['LX'], axes['LY'], axes['LR2'], axes['RY'], axes['RX'] = [joystick.get_axis(i) for i in range(5)]
+                HATX = joystick.get_hat(0)[0]
+                
+                if buttons['START']:
+                    pygame.quit()
+                    time.sleep(0.2)
+                    break
+                # changes stride
+                if buttons['A']:  
+                    if strideMode != 'medium':
+                        strideMode = 'medium'
+                        dX, dY, dZ = XstridePx, YstridePx, Zstride
+                        jogSpeed = 666
+                        print('    '+strideMode +' stride mode ' + str([jogSpeed, dZ]))
+                if buttons['B']:  
+                    if strideMode != 'small':
+                        strideMode = 'small'
+                        jogSpeed = 100
+                        dX, dY, dZ = XstridePx // 5, YstridePx // 5, Zstride // 5
+                        print('    '+strideMode +' stride mode ' + str([jogSpeed, dZ]))
+                if buttons['X']:  
+                    if strideMode != 'large':
+                        strideMode = 'large'
+                        dX, dY, dZ = XstridePx * 5, YstridePx * 5, Zstride * 5
+                        jogSpeed = 1700
+                        print('    '+strideMode +' stride mode ' + str([jogSpeed, dZ]))
+                        
+                # sample X, Y, rotation
+                if disabled != 'X':
+                    if inThreshold(axes['RX']) == 1 and inThreshold(prevAxes['RX']) ==0: 
+                        sampleStageX.jog(-1 * JOGMODE[str(jogSpeed)])
+                    if inThreshold(axes['RX']) == 0 and inThreshold(prevAxes['RX']) != 0: 
+                        sampleStageX.stop()
+                    if inThreshold(axes['RX']) == -1 and inThreshold(prevAxes['RX']) ==0: 
+                        sampleStageX.jog(JOGMODE[str(jogSpeed)])
+
+                if disabled != 'Y':
+                    if inThreshold(axes['RY']) == -1 and inThreshold(prevAxes['RY']) ==0:
+                        sampleStageY.jog(-1 * JOGMODE[str(jogSpeed)])
+                    if inThreshold(axes['RY']) == 0 and inThreshold(prevAxes['RY']) != 0: 
+                        sampleStageY.stop()
+                    if inThreshold(axes['RY']) == 1 and inThreshold(prevAxes['RY']) ==0:
+                        sampleStageY.jog(JOGMODE[str(jogSpeed)])
+                if HATX != 0:
+                    rotationStage.move(-HATX*rotateAngle)
+                # lens z
+                if buttons['R1']:  # right knob goes clockwise
+                    tryMoveLens(0,0,dZ)
+                if axes['LR2'] < -0.99:
+                    tryMoveLens(0,0,-dZ)
             
-            if button['START']:
-                pygame.quit()
-                time.sleep(0.2)
-                break
-            # changes stride
-            if button['A']:  
-                if strideMode != 'medium':
-                    strideMode = 'medium'
-                    dX, dY, dZ = XstridePx, YstridePx, Zstride
-                    print('    ' + strideMode +' stride mode ' + str([dX, dY, dZ]))
-            if button['B']:  
-                if strideMode != 'small':
-                    strideMode = 'small'
-                    dX, dY, dZ = XstridePx // 5, YstridePx // 5, Zstride // 5
-                    print('    '+strideMode +' stride mode ' + str([dX, dY, dZ]))
-            if button['X']:  
-                if strideMode != 'large':
-                    strideMode = 'large'
-                    dX, dY, dZ = XstridePx * 5, YstridePx * 5, Zstride * 5
-                    print('    '+strideMode +' stride mode ' + str([dX, dY, dZ]))
-                    
-            # sample X, Y, rotation
-            if disabled != 'X':
-                if RX > thres: 
-                    tryMoveLens(dX,0,0)
-                if RX < -thres:
-                    tryMoveLens(-dX,0,0)
-            if disabled != 'Y':
-                if RY < -thres:
-                    tryMoveLens(0,-dY,0)
-                if RY > thres:
-                    tryMoveLens(0, dY,0)
-            if HATX != 0:
-                rotationStage.move(-HATX*rotateAngle)
-            # lens z
-            if button['R1']:  # right knob goes clockwise
-                tryMoveLens(0,0,dZ)
-            if LR2 < -0.99:
-                tryMoveLens(0,0,-dZ)
-                '''
+            prevButtons= buttons
+
+            
+            '''
             #manipulator
-            if button['L1']:  #up
+            if buttons['L1']:  #up
                 manipulatorZ.move()
-            if LR2 > thres: #down
+            if axes['LR2'] > thres: #down
                 manipulatorZ.move()
-            if LY < -thres:
+            if axes['LY'] < -thres:
                 manipulatorY.move()
-            if LY > thres: 
+            if axes['LY'] > thres: 
                 manipulatorY.move()     
-            if LX > thres: 
+            if axes['LX'] > thres: 
                 manipulatorX.move()  
-            if LX < -thres:                   
+            if axes['LX'] < -thres:                   
                 manipulatorX.move() 
-                '''
-    if mode=='keyboard':
+            '''
+        
+    '''
+    if controller=='keyboard':
         while True:         
             if keyboard.is_pressed('alt+enter'):
                 break
@@ -233,6 +326,7 @@ def joyControl(disabled = None, mode='joystick'):
                 tryMoveLens(0,0,dZ)
             if keyboard.is_pressed('alt+['):  
                 tryMoveLens(0,0,-dZ)
+        '''
     time.sleep(0.1)
     output = np.array([Xdis, Ydis, Zdis])
     print(output)
@@ -251,14 +345,11 @@ def captureImage(camWindow):
     Change focus closer: C gross, T mid, W fine. 
     Change focus to inf: R gross, N mid, V fine.
     '''
-    oldFileList = os.listdir(imgFolderPath)
+
     #cam.top_window().SetFocus()    
     camWindow.set_foreground()
-    time.sleep(0.05)
+    time.sleep(0.02)
     keyboard.press_and_release('space')
-    # make sure there is enough time for the photo to be taken
-    while len(os.listdir(imgFolderPath))==len(oldFileList):
-        time.sleep(0.05)
     #print('Photo taken')
     
 # move sample is opposite to move lens
@@ -294,6 +385,7 @@ def scan(TR, BR):
                 scanList.append((j, i)) 
                           
     for ind, loc in enumerate(scanList):
+        oldFileList = os.listdir(imgFolderPath)
         captureImage(camWindow)
         current = calcLoc(loc)
         info = (loc, np.copy(current))
@@ -302,8 +394,11 @@ def scan(TR, BR):
         try:
             new = calcLoc(scanList[ind+1])
             moveLens(current, new)
-            while not (sampleStageX.amIstill(50) and sampleStageY.amIstill(50)):
+            while not (sampleStageX.amIstill(30) and sampleStageY.amIstill(30)):
                 pass
+            # make sure the photo has been taken
+            while len(os.listdir(imgFolderPath))==len(oldFileList):
+                time.sleep(0.02)
         except IndexError:
             pass
     return log
