@@ -10,8 +10,8 @@ import serial.tools.list_ports
 
 import stepperControl
 import agilisControl
-import EOSwindowControl
-from imgUtil import rotateCrop
+from EOSwindowControl import focusWindow
+# from imgUtil import rotateCrop
 
 # CONFIGURATION
 
@@ -35,15 +35,15 @@ lenPerPx = 0.56926
 XstridePx = 1000
 YstridePx = 1000
 Zstride = 30
-rotateAngle = 1000  #roughly 500 steps = 1 deg
+rotateAngle = 1000  #for rotational stage. roughly 500 steps = 1 deg
 
 jogSpeed = 1700 # 5, 100, 666, 1700
 JOGMODE = {'666': 4, '1700': 3, '100': 2, '5':1}
 
-pxSize = 1000
-offset = 60 #we'll crop the central square of the image (size: pxSize + offset)
+pxSize = 900
+#offset = 50 #we'll crop the central square of the image (size: pxSize + offset)
 
-#stepsPerSide = {key: int(pxSize // value) for key, value in pxPerStep.items()}
+windowName = "Remote Live View window"
 
 comlist = serial.tools.list_ports.comports()
 connected = [port.device for port in serial.tools.list_ports.comports()]
@@ -52,8 +52,10 @@ print("Connected COM ports: " + str(connected))
 stepper = stepperControl.StepperMotor('COM3')
 agController = agilisControl.Controller('COM5')
 
+'''
 camWindow = EOSwindowControl.WindowMgr()
 camWindow.find_window_wildcard("Remote Live View window")
+'''
 
 rotationStage = agController.addDevice(channel=3, axis=2)
 sampleStageX = agController.addDevice(channel=4, axis=1)
@@ -97,6 +99,15 @@ def compensateJog(exp, dir):
         nom = 0.9861*exp + 119.18
     return nom
 
+def initPosition():
+    print('Moving to the starting position...')   
+    sampleStageX.goMin()
+    sampleStageY.goMin()
+    while not (sampleStageX.amIstill(200) and sampleStageY.amIstill(200)):
+        pass
+    sampleStageX.timedJog(speed=1700,steps=compensateJog(5000,'X'))
+    sampleStageY.timedJog(speed=1700,steps=compensateJog(5000,'Y'))
+    
 # time
 def moveLens(From, To, mode='jog'):  # move or jog(positive int) 
     dZ = To[2]-From[2]
@@ -124,7 +135,6 @@ def moveLens(From, To, mode='jog'):  # move or jog(positive int)
         sampleStageY.timedJog(speed=1700,steps=compensateJog(-dY,'Y'))
     else:
         raise Exception('Moving mode is not defined')
-
     return -dX,-dY,dZ
         
 def joyControl(disabled = None, controller='joystick', moveMode='move'): 
@@ -148,7 +158,7 @@ def joyControl(disabled = None, controller='joystick', moveMode='move'):
         nonlocal Xdis, Ydis, Zdis
         before = np.array([sampleStageX.queryCounter(), sampleStageY.queryCounter(),stepper.GetPosition()])
         expected = np.array(moveLens([0,0,0],[DX,DY,DZ], mode='move'))
-        rate = 30
+        rate = 50
         if DZ == 0:
             while not (sampleStageX.amIstill(rate) and sampleStageY.amIstill(rate)):
                 pass
@@ -234,6 +244,7 @@ def joyControl(disabled = None, controller='joystick', moveMode='move'):
                 if axes['LR2'] < -0.99:
                     tryMoveLens(0,0,-dZ)
         '''
+        # not working yet
         if moveMode=='jog':
             while True:
                 for event in pygame.event.get():
@@ -347,7 +358,7 @@ def joyControl(disabled = None, controller='joystick', moveMode='move'):
     print(output)
     return output
 
-def captureImage(camWindow):
+def captureImage(windowName):
     '''
     EOS utility hotkeys
     Shutter release: space bar 
@@ -357,9 +368,11 @@ def captureImage(camWindow):
     '''
 
     #cam.top_window().SetFocus()    
-    camWindow.set_foreground()
+    #camWindow.set_foreground()
+    focusWindow(windowName)
     time.sleep(0.02)
     keyboard.press_and_release('space')
+    time.sleep(0.04)
     #print('Photo taken')
     
 # move sample is opposite to move lens
@@ -374,8 +387,7 @@ def scan(TR, BR):
     dzdx = (y2 * z1 - y1 * z2) / (y2 * x1 - y1 * x2)      # Zstep per px along X
     dzdy = (x2 * z1 - x1 * z2) / (x2 * y1 - x1 * y2)    
     
-    print("numRows: %d" % numRows)
-    print("numCols: %d" % numCols)
+    totNum = numRows * numCols
   
     log = {'size': (numRows, numCols, pxSize), 'trace':[]}
     
@@ -396,11 +408,11 @@ def scan(TR, BR):
                           
     for ind, loc in enumerate(scanList):
         oldFileList = os.listdir(imgFolderPath)
-        captureImage(camWindow)
+        captureImage(windowName)
         current = calcLoc(loc)
-        info = (loc, np.copy(current))
+        info = (loc, current)
         log['trace'].append(info)
-        print(info)
+        print(('%d / %d '+ str(info)) % (ind+1, totNum))
         try:
             new = calcLoc(scanList[ind+1])
             moveLens(current, new)
@@ -412,7 +424,7 @@ def scan(TR, BR):
         except IndexError:
             pass
     return log
-'''
+
 def scanArea(size):
     # mm
     if type(size)==int:
@@ -423,6 +435,7 @@ def scanArea(size):
         height = size[1] 
     pxW = round(width*1000 / lenPerPx)
     pxH = round(height*1000 / lenPerPx)
+    initPosition()
     print('Please move to the bottom right corner and focus')   
     joyControl()
     print('Moving to the Top Right corner...') 
@@ -430,7 +443,7 @@ def scanArea(size):
     moveLens([0,0,0],toMove)
     print('Please adjust position and focus')
     BR2TR = joyControl() + np.array(toMove)
-    
+
     print('Moving to the Top Left corner...') 
     toMove2 = [-pxW,0,0]
     moveLens([0,0,0],toMove2)
@@ -447,17 +460,21 @@ def scanArea(size):
         os.mkdir(imgFolderPath)
         oldFileList = []
     
-    camWindow.set_foreground()  
-    time.sleep(0.2)
+    focusWindow(windowName) 
+    time.sleep(0.1)
     # Scan from TL to BR
     print('Starting to scan...')
     scan(TR, BR)  
     print('Scan finished')
-'''    
+
 ################################################################
 # In[]
-    
-print('Please move to the bottom right corner and focus')   
+
+# Move the stages near the limit to ensure the scanning range is large enough (now up to ~ 24mm)
+
+initPosition()    
+
+print('Please use the knob move to the bottom right corner and use the joystick to focus')   
 joyControl()
 
 print('Please go to the Top Right corner and focus')
@@ -477,8 +494,9 @@ except FileNotFoundError:
     os.mkdir(imgFolderPath)
     oldFileList = []
 
-camWindow.set_foreground()  
-time.sleep(0.2)
+#camWindow.set_foreground()  
+focusWindow(windowName)
+time.sleep(0.1)
 # Scan from TL to BR
 print('Starting to scan...')
 scanResult = scan(TR, BR)

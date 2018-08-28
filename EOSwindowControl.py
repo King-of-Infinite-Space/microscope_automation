@@ -1,5 +1,23 @@
 import win32gui
 import re
+from pywinauto import application
+from pywinauto.findwindows import WindowAmbiguousError, WindowNotFoundError
+
+def focusWindow(name):
+    # Init App object
+    app = application.Application()
+    try:
+        app.connect(title_re=".*%s.*" % name)
+
+        # Access app's window object
+        app_dialog = app.top_window()
+        app_dialog.set_focus()
+    except(WindowNotFoundError):
+        print('"%s" not found' % name)
+        pass
+    except(WindowAmbiguousError):
+        print('There are too many "%s" windows found' % name)
+        pass
 
 class WindowMgr:
     """Encapsulates some calls to the winapi for window management"""
